@@ -47,6 +47,8 @@ To run this project, ensure you have Flutter SDK installed on your machine. Foll
 
 ### API Key Management
 
+The API key is necessary to talk to the Gemini model. You can manage your API key through the settings screen. The key can be created from the [Google AI Studio](https://aistudio.google.com/apikey).
+
 1. Navigate to the **Settings** screen.
 2. Enter your API key in the provided text field.
 3. Click **Save Key** to store the key locally.
