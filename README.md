@@ -56,6 +56,8 @@ The API key is necessary to talk to the Gemini model. You can manage your API ke
 
 ### MCP Server Management
 
+The MCP server management feature allows you to add, edit, and delete server configurations. You can also toggle the connection state of each server. At the moment, the application supports only the stdio based servers. For the example of MCP servers you can find from <https://github.com/modelcontextprotocol/servers>
+
 1. Add a new server by clicking the **Add New MCP Server** button.
 2. Fill in the server details, including name, command, arguments, and custom environment variables.
 3. Save the server configuration.
