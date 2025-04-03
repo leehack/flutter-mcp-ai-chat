@@ -1,6 +1,6 @@
 # Flutter + dart_mcp + AI Desktop App Demo
 
-This is a Flutter-based project designed to manage and configure MCP (Multi-Connection Protocol) servers. The application provides a user-friendly interface for managing API keys, configuring server settings, and handling custom environment variables.
+This is a Flutter-based project designed to manage and configure MCP (Multi-Connection Protocol) servers. The application provides a user-friendly interface for managing API keys, configuring server settings, and handling custom environment variables. The application uses the [dart_mcp](https://pub.dev/packages/mcp_dart) package to facilitate communication with MCP servers.
 
 ## Screenshots
 
