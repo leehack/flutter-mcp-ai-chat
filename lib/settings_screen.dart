@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import 'mcp_client.dart';
+import 'mcp/mcp.dart';
 import 'settings_service.dart';
-import 'mcp_server_config.dart';
 
 const _uuid = Uuid();
 

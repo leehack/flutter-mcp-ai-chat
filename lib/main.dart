@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'chat_screen.dart';
-import 'mcp_server_config.dart'; // Import updated config class
+import 'mcp/mcp_server_config.dart'; // Import updated config class
 import 'settings_screen.dart';
 import 'settings_service.dart'; // Import service and providers
 

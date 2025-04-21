@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-import 'mcp_server_config.dart'; // Import the updated config class
+import 'mcp/mcp_server_config.dart'; // Import the updated config class
 
 // --- Storage Keys ---
 const String apiKeyStorageKey = 'geminiApiKey';

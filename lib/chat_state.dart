@@ -7,9 +7,8 @@ import 'package:collection/collection.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 import 'gemini_service.dart';
+import 'mcp/mcp.dart';
 import 'settings_service.dart';
-import 'mcp_client.dart'
-    show mcpClientProvider, McpProcessResult, McpClientState;
 
 // ChatMessage class remains the same as chat_state_v3
 @immutable
