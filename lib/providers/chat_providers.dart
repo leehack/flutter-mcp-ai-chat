@@ -270,86 +270,95 @@ class ChatNotifier extends StateNotifier<ChatState> {
       );
     }
 
-    final functionCall =
+    final functionCalls =
         initialAiResponse.firstCandidateContent?.parts
             .whereType<AiFunctionCallPart>()
-            .firstOrNull;
+            .toList() ??
+        [];
 
-    if (functionCall == null) {
-      return initialAiResponse; // No tool call needed
+    if (functionCalls.isEmpty) {
+      return initialAiResponse; // No tool calls needed
     }
 
-    // --- Tool Call Required ---
-    final toolName = functionCall.name;
-    final serverId = mcpState.getServerIdForTool(toolName);
-    if (serverId == null) {
-      debugPrint(
-        "ChatNotifier: Could not find unique server for tool '$toolName'.",
-      );
-      final errorResponseContent = AiContent.toolResponse(toolName, {
-        'error': "Tool '$toolName' not found or has duplicates.",
-      });
-      // Call AI again informing it of the error
-      return await aiRepo.generateContent([
-        ...historyWithPrompt,
-        initialAiResponse.firstCandidateContent!,
-        errorResponseContent,
-      ]);
-    }
+    // --- Tool Calls Required ---
+    final List<AiFunctionResponsePart> functionResponses = [];
 
-    List<McpContent> toolExecutionResult;
-    try {
-      // Display message indicating tool call
-      final serverName =
-          _ref
-              .read(mcpServerListProvider)
-              .firstWhereOrNull((s) => s.id == serverId)
-              ?.name ??
-          serverId;
-      _updateLastDisplayMessage(
-        ChatMessage(
-          text: "Calling tool: $toolName on $serverName...",
-          isUser: false,
+    for (final functionCall in functionCalls) {
+      final toolName = functionCall.name;
+      final serverId = mcpState.getServerIdForTool(toolName);
+
+      if (serverId == null) {
+        debugPrint(
+          "ChatNotifier: Could not find unique server for tool '$toolName'.",
+        );
+
+        functionResponses.add(
+          AiFunctionResponsePart(
+            name: toolName,
+            response: {
+              'error': "Tool '$toolName' not found or has duplicates.",
+            },
+          ),
+        );
+        continue;
+      }
+
+      List<McpContent> toolExecutionResult;
+      try {
+        // Display message indicating tool call
+        final serverName =
+            _ref
+                .read(mcpServerListProvider)
+                .firstWhereOrNull((s) => s.id == serverId)
+                ?.name ??
+            serverId;
+        _updateLastDisplayMessage(
+          ChatMessage(
+            text: "Calling tool: $toolName on $serverName...",
+            isUser: false,
+            toolName: toolName,
+            sourceServerId: serverId,
+            sourceServerName: serverName,
+          ),
+        );
+
+        toolExecutionResult = await mcpRepo.executeTool(
+          serverId: serverId,
           toolName: toolName,
-          sourceServerId: serverId,
-          sourceServerName: serverName,
-        ),
-      );
+          arguments: functionCall.args,
+        );
 
-      toolExecutionResult = await mcpRepo.executeTool(
-        serverId: serverId,
-        toolName: toolName,
-        arguments: functionCall.args,
-      );
-    } catch (e) {
-      debugPrint(
-        "ChatNotifier: Error executing tool '$toolName' on server '$serverId': $e",
-      );
-      final errorResponseContent = AiContent.toolResponse(toolName, {
-        'error': "Execution failed: $e",
-      });
-      // Call AI again informing it of the error
-      return await aiRepo.generateContent([
-        ...historyWithPrompt,
-        initialAiResponse.firstCandidateContent!,
-        errorResponseContent,
-      ]);
+        // Add successful response
+        functionResponses.add(
+          AiFunctionResponsePart(
+            name: toolName,
+            response: {
+              'result': toolExecutionResult
+                  .whereType<McpTextContent>()
+                  .map((t) => t.text)
+                  .join('\n'),
+            },
+          ),
+        );
+      } catch (e) {
+        debugPrint(
+          "ChatNotifier: Error executing tool '$toolName' on server '$serverId': $e",
+        );
+
+        // Add error response
+        functionResponses.add(
+          AiFunctionResponsePart(
+            name: toolName,
+            response: {'error': "Execution failed: $e"},
+          ),
+        );
+      }
     }
 
-    // Translate McpContent list to a Map suitable for AiFunctionResponsePart
-    final responseData = {
-      'result': toolExecutionResult
-          .whereType<McpTextContent>()
-          .map((t) => t.text)
-          .join('\n'),
-    };
-    final functionResponsePart = AiFunctionResponsePart(
-      name: toolName,
-      response: responseData,
-    );
+    // Create a single toolResponseContent with all function responses as parts
     final toolResponseContent = AiContent(
       role: 'tool',
-      parts: [functionResponsePart],
+      parts: functionResponses,
     );
 
     final finalHistory = [
