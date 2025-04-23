@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_chat_desktop/providers/mcp_providers.dart';
+import 'package:flutter_chat_desktop/providers/settings_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../application/chat_notifier.dart';
-import '../application/mcp_providers.dart';
-import '../application/settings_providers.dart';
-
-import 'widgets/message_bubble.dart';
+import '../providers/chat_providers.dart';
 import 'widgets/chat_input_field.dart';
 import 'widgets/mcp_connection_status_indicator.dart';
+import 'widgets/message_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});

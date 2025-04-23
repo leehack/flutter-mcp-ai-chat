@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Only for provider definition
 import 'package:mcp_dart/mcp_dart.dart';
 
 import '../entity/mcp_models.dart';
@@ -274,15 +273,3 @@ class McpRepositoryImpl implements McpRepository {
     debugPrint("MCP Repo: Disposed.");
   }
 }
-
-// --- Provider ---
-
-/// Provider for the MCP Repository implementation.
-/// It no longer depends on Ref directly.
-final mcpRepositoryProvider = Provider<McpRepository>((ref) {
-  // The repository itself doesn't need ref, so we just instantiate it.
-  final repo = McpRepositoryImpl();
-  // Ensure cleanup when the provider is disposed
-  ref.onDispose(() => repo.dispose());
-  return repo;
-});

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_chat_desktop/providers/settings_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'application/settings_providers.dart';
 import 'domains/settings/data/settings_repository_impl.dart';
 import 'presentation/chat_screen.dart';
 import 'presentation/settings_screen.dart';

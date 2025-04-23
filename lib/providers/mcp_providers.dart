@@ -1,15 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_chat_desktop/providers/settings_providers.dart';
 import 'package:flutter_chat_desktop/domains/mcp/data/mcp_repository_impl.dart';
+import 'package:flutter_chat_desktop/domains/mcp/entity/mcp_models.dart';
+import 'package:flutter_chat_desktop/domains/mcp/repository/mcp_repository.dart';
+import 'package:flutter_chat_desktop/domains/settings/entity/mcp_server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../domains/mcp/entity/mcp_models.dart';
-// Removed: import 'package:google_generative_ai/google_generative_ai.dart';
-
-import '../domains/mcp/repository/mcp_repository.dart';
-import '../domains/settings/entity/mcp_server_config.dart';
-import 'settings_providers.dart';
 
 /// State notifier responsible for managing the MCP client state based on settings
 /// and repository updates. It orchestrates connections/disconnections.
@@ -133,10 +130,22 @@ class McpClientNotifier extends StateNotifier<McpClientState> {
         );
       });
     }
-
-    // Clean up stale statuses (handled by repo state stream listener)
-    // final currentStatusIds = currentStatuses.keys.toSet();
-    // final statusesToRemove = currentStatusIds.difference(knownServerIds);
-    // if (statusesToRemove.isNotEmpty) { ... }
   }
 }
+
+/// Provider for the MCP Repository implementation.
+/// It no longer depends on Ref directly.
+final mcpRepositoryProvider = Provider<McpRepository>((ref) {
+  // The repository itself doesn't need ref, so we just instantiate it.
+  final repo = McpRepositoryImpl();
+  // Ensure cleanup when the provider is disposed
+  ref.onDispose(() => repo.dispose());
+  return repo;
+});
+
+/// The main provider for accessing the MCP client state and notifier.
+/// The state reflects the connection statuses managed by the McpRepository.
+final mcpClientProvider =
+    StateNotifierProvider<McpClientNotifier, McpClientState>((ref) {
+      return McpClientNotifier(ref);
+    });

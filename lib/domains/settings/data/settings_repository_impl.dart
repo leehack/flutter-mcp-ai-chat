@@ -1,11 +1,14 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Only for provider definition
 
 import '../entity/mcp_server_config.dart';
 import '../repository/settings_repository.dart';
-import 'settings_keys.dart';
+
+// Storage keys are implementation details of the data layer.
+const String apiKeyStorageKey = 'geminiApiKey';
+const String mcpServerListKey = 'mcpServerList';
 
 /// Implementation of SettingsRepository using SharedPreferences.
 class SettingsRepositoryImpl implements SettingsRepository {
@@ -75,19 +78,3 @@ class SettingsRepositoryImpl implements SettingsRepository {
     }
   }
 }
-
-// --- Providers ---
-
-/// Provider for the SharedPreferences instance.
-/// Needs to be overridden in main.dart.
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError(
-    "SharedPreferences instance must be provided via ProviderScope overrides in main.dart",
-  );
-});
-
-/// Provider for the Settings Repository implementation.
-final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return SettingsRepositoryImpl(prefs);
-});

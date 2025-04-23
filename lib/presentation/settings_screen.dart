@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_chat_desktop/providers/mcp_providers.dart';
+import 'package:flutter_chat_desktop/providers/settings_providers.dart';
+import 'package:flutter_chat_desktop/domains/mcp/entity/mcp_models.dart';
+import 'package:flutter_chat_desktop/domains/settings/entity/mcp_server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../application/settings_service.dart';
-import '../application/settings_providers.dart';
-import '../application/mcp_providers.dart';
-import '../domains/settings/entity/mcp_server_config.dart';
-import '../domains/mcp/entity/mcp_models.dart';
 
 // Import reusable widgets
 import 'widgets/api_key_section.dart';
