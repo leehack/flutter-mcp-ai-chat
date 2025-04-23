@@ -1,13 +1,15 @@
-import 'package:flutter/foundation.dart'; // For @immutable
-import 'package:collection/collection.dart'; // For listEquals
-
-// --- Schema Entities ---
+import 'package:flutter/foundation.dart';
+import 'package:collection/collection.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 
 /// Base class for schema definitions used in function declarations.
 @immutable
 sealed class AiSchema {
   final String? description;
   const AiSchema({this.description});
+
+  /// Converts the domain schema to a Google Generative AI SDK schema
+  Schema toGoogleGenAi();
 }
 
 /// Represents an object schema with properties.
@@ -22,6 +24,15 @@ class AiObjectSchema extends AiSchema {
   });
 
   @override
+  Schema toGoogleGenAi() {
+    return Schema.object(
+      properties: properties.map((k, v) => MapEntry(k, v.toGoogleGenAi())),
+      requiredProperties: requiredProperties,
+      description: description,
+    );
+  }
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AiObjectSchema &&
@@ -32,6 +43,7 @@ class AiObjectSchema extends AiSchema {
             other.requiredProperties,
           ) &&
           description == other.description;
+
   @override
   int get hashCode =>
       const MapEquality().hash(properties) ^
@@ -46,12 +58,20 @@ class AiStringSchema extends AiSchema {
   const AiStringSchema({this.enumValues, super.description});
 
   @override
+  Schema toGoogleGenAi() {
+    return (enumValues != null && enumValues!.isNotEmpty)
+        ? Schema.enumString(enumValues: enumValues!, description: description)
+        : Schema.string(description: description);
+  }
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AiStringSchema &&
           runtimeType == other.runtimeType &&
           const ListEquality().equals(enumValues, other.enumValues) &&
           description == other.description;
+
   @override
   int get hashCode =>
       const ListEquality().hash(enumValues) ^ description.hashCode;
@@ -60,12 +80,17 @@ class AiStringSchema extends AiSchema {
 /// Represents a number schema (integer or double).
 class AiNumberSchema extends AiSchema {
   const AiNumberSchema({super.description});
+
+  @override
+  Schema toGoogleGenAi() => Schema.number(description: description);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AiNumberSchema &&
           runtimeType == other.runtimeType &&
           description == other.description;
+
   @override
   int get hashCode => description.hashCode;
 }
@@ -73,12 +98,17 @@ class AiNumberSchema extends AiSchema {
 /// Represents a boolean schema.
 class AiBooleanSchema extends AiSchema {
   const AiBooleanSchema({super.description});
+
+  @override
+  Schema toGoogleGenAi() => Schema.boolean(description: description);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AiBooleanSchema &&
           runtimeType == other.runtimeType &&
           description == other.description;
+
   @override
   int get hashCode => description.hashCode;
 }
@@ -88,6 +118,11 @@ class AiArraySchema extends AiSchema {
   final AiSchema items;
 
   const AiArraySchema({required this.items, super.description});
+
+  @override
+  Schema toGoogleGenAi() =>
+      Schema.array(items: items.toGoogleGenAi(), description: description);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -95,24 +130,27 @@ class AiArraySchema extends AiSchema {
           runtimeType == other.runtimeType &&
           items == other.items &&
           description == other.description;
+
   @override
   int get hashCode => items.hashCode ^ description.hashCode;
 }
-
-// --- Tool Entities ---
 
 /// Represents a function declaration for the AI model.
 @immutable
 class AiFunctionDeclaration {
   final String name;
   final String description;
-  final AiSchema? parameters; // Schema for arguments
+  final AiSchema? parameters;
 
   const AiFunctionDeclaration({
     required this.name,
     required this.description,
     this.parameters,
   });
+
+  /// Converts to Google Generative AI SDK function declaration
+  FunctionDeclaration toGoogleGenAi() =>
+      FunctionDeclaration(name, description, parameters?.toGoogleGenAi());
 
   @override
   bool operator ==(Object other) =>
@@ -122,6 +160,7 @@ class AiFunctionDeclaration {
           name == other.name &&
           description == other.description &&
           parameters == other.parameters;
+
   @override
   int get hashCode =>
       name.hashCode ^ description.hashCode ^ parameters.hashCode;
@@ -134,6 +173,13 @@ class AiTool {
 
   const AiTool({required this.functionDeclarations});
 
+  /// Converts to Google Generative AI SDK tool
+  Tool toGoogleGenAi() {
+    final declarations =
+        functionDeclarations.map((decl) => decl.toGoogleGenAi()).toList();
+    return Tool(functionDeclarations: declarations);
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -143,16 +189,31 @@ class AiTool {
             functionDeclarations,
             other.functionDeclarations,
           );
+
   @override
   int get hashCode => const ListEquality().hash(functionDeclarations);
 }
-
-// --- Content & Part Entities ---
 
 /// Base class for parts within AI content.
 @immutable
 sealed class AiPart {
   const AiPart();
+
+  /// Converts to Google Generative AI SDK part
+  Part toGoogleGenAi();
+
+  /// Creates from Google Generative AI SDK part
+  static AiPart fromSdk(Part part) {
+    return switch (part) {
+      TextPart p => AiTextPart(p.text),
+      FunctionCall p => AiFunctionCallPart(name: p.name, args: p.args),
+      FunctionResponse p => AiFunctionResponsePart(
+        name: p.name,
+        response: p.response ?? {},
+      ),
+      _ => AiTextPart("[Unsupported Part Type: ${part.runtimeType}]"),
+    };
+  }
 }
 
 /// Represents a text part.
@@ -161,11 +222,15 @@ class AiTextPart extends AiPart {
   const AiTextPart(this.text);
 
   @override
+  Part toGoogleGenAi() => TextPart(text);
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AiTextPart &&
           runtimeType == other.runtimeType &&
           text == other.text;
+
   @override
   int get hashCode => text.hashCode;
 }
@@ -177,12 +242,16 @@ class AiFunctionCallPart extends AiPart {
   const AiFunctionCallPart({required this.name, required this.args});
 
   @override
+  Part toGoogleGenAi() => FunctionCall(name, args);
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AiFunctionCallPart &&
           runtimeType == other.runtimeType &&
           name == other.name &&
           const MapEquality().equals(args, other.args);
+
   @override
   int get hashCode => name.hashCode ^ const MapEquality().hash(args);
 }
@@ -190,8 +259,11 @@ class AiFunctionCallPart extends AiPart {
 /// Represents the response from a function call execution.
 class AiFunctionResponsePart extends AiPart {
   final String name;
-  final Map<String, dynamic> response; // The result data from the function
+  final Map<String, dynamic> response;
   const AiFunctionResponsePart({required this.name, required this.response});
+
+  @override
+  Part toGoogleGenAi() => FunctionResponse(name, response);
 
   @override
   bool operator ==(Object other) =>
@@ -200,16 +272,15 @@ class AiFunctionResponsePart extends AiPart {
           runtimeType == other.runtimeType &&
           name == other.name &&
           const MapEquality().equals(response, other.response);
+
   @override
   int get hashCode => name.hashCode ^ const MapEquality().hash(response);
 }
 
-// Add other part types like AiBlobPart if needed
-
 /// Represents a piece of content in the AI conversation history or response.
 @immutable
 class AiContent {
-  final String role; // 'user', 'model', 'tool'
+  final String role;
   final List<AiPart> parts;
 
   const AiContent({required this.role, required this.parts});
@@ -231,10 +302,24 @@ class AiContent {
     parts: [AiFunctionResponsePart(name: toolName, response: responseData)],
   );
 
-  /// Extracts the text from all TextParts, joined together.
-  String get text {
-    return parts.whereType<AiTextPart>().map((p) => p.text).join();
+  /// Converts to Google Generative AI SDK content
+  Content toGoogleGenAi() {
+    final sdkParts = parts.map((part) => part.toGoogleGenAi()).toList();
+    return Content(role, sdkParts);
   }
+
+  /// Creates from Google Generative AI SDK content
+  static AiContent fromSdk(Content content) {
+    final domainParts = content.parts.map(AiPart.fromSdk).toList();
+    return AiContent(role: content.role ?? 'unknown', parts: domainParts);
+  }
+
+  /// Extracts the text from all TextParts, joined together.
+  String get text => parts.whereType<AiTextPart>().map((p) => p.text).join();
+
+  /// Checks if this content has a function call part and returns the first one if it exists
+  AiFunctionCallPart? get functionCall =>
+      parts.whereType<AiFunctionCallPart>().firstOrNull;
 
   @override
   bool operator ==(Object other) =>
@@ -243,21 +328,21 @@ class AiContent {
           runtimeType == other.runtimeType &&
           role == other.role &&
           const ListEquality().equals(parts, other.parts);
+
   @override
   int get hashCode => role.hashCode ^ const ListEquality().hash(parts);
 }
-
-// --- Response Entities ---
 
 /// Represents a potential response candidate from the AI.
 @immutable
 class AiCandidate {
   final AiContent content;
-  // Add other candidate properties if needed (e.g., finishReason, safetyRatings)
-  // final String? finishReason;
-  // final List<AiSafetyRating>? safetyRatings;
 
   const AiCandidate({required this.content});
+
+  /// Creates from Google Generative AI SDK candidate
+  static AiCandidate fromSdk(Candidate candidate) =>
+      AiCandidate(content: AiContent.fromSdk(candidate.content));
 
   @override
   bool operator ==(Object other) =>
@@ -265,6 +350,7 @@ class AiCandidate {
       other is AiCandidate &&
           runtimeType == other.runtimeType &&
           content == other.content;
+
   @override
   int get hashCode => content.hashCode;
 }
@@ -273,10 +359,15 @@ class AiCandidate {
 @immutable
 class AiResponse {
   final List<AiCandidate> candidates;
-  // Add prompt feedback if needed
-  // final AiPromptFeedback? promptFeedback;
 
   const AiResponse({required this.candidates});
+
+  /// Creates from Google Generative AI SDK response
+  static AiResponse fromSdk(GenerateContentResponse response) {
+    final domainCandidates =
+        response.candidates.map(AiCandidate.fromSdk).toList();
+    return AiResponse(candidates: domainCandidates);
+  }
 
   /// Gets the content from the first candidate, if available.
   AiContent? get firstCandidateContent => candidates.firstOrNull?.content;
@@ -290,18 +381,21 @@ class AiResponse {
       other is AiResponse &&
           runtimeType == other.runtimeType &&
           const ListEquality().equals(candidates, other.candidates);
+
   @override
   int get hashCode => const ListEquality().hash(candidates);
 }
 
 /// Represents a chunk of data received from a streaming AI call.
-/// Could be a text part or potentially other part types in the future.
 @immutable
 class AiStreamChunk {
-  // For now, assume chunks primarily contain text delta
   final String textDelta;
 
   const AiStreamChunk({required this.textDelta});
+
+  /// Creates from Google Generative AI SDK chunk
+  static AiStreamChunk fromSdk(GenerateContentResponse chunk) =>
+      AiStreamChunk(textDelta: chunk.text ?? "");
 
   @override
   bool operator ==(Object other) =>
@@ -309,6 +403,7 @@ class AiStreamChunk {
       other is AiStreamChunk &&
           runtimeType == other.runtimeType &&
           textDelta == other.textDelta;
+
   @override
   int get hashCode => textDelta.hashCode;
 }
