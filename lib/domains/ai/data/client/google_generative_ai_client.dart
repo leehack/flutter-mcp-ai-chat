@@ -68,7 +68,7 @@ class GoogleGenerativeAiClient implements AiClient {
     try {
       final apiContent = content.map((c) => c.toGoogleGenAi()).toList();
       final apiStream = _model!.generateContentStream(apiContent);
-      return apiStream.map(AiStreamChunk.fromSdk);
+      return apiStream.map(AiStreamChunk.fromGoogleGenAi);
     } catch (e) {
       debugPrint(
         "Error initiating Gemini stream in GoogleGenerativeAiClient: $e",
@@ -99,7 +99,7 @@ class GoogleGenerativeAiClient implements AiClient {
         tools: apiTools,
       );
 
-      return AiResponse.fromSdk(apiResponse);
+      return AiResponse.fromGoogleGenAi(apiResponse);
     } catch (e) {
       debugPrint(
         "Error calling generateContent in GoogleGenerativeAiClient: $e",

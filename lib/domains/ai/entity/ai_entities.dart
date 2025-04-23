@@ -203,7 +203,7 @@ sealed class AiPart {
   Part toGoogleGenAi();
 
   /// Creates from Google Generative AI SDK part
-  static AiPart fromSdk(Part part) {
+  static AiPart fromGoogleGenAi(Part part) {
     return switch (part) {
       TextPart p => AiTextPart(p.text),
       FunctionCall p => AiFunctionCallPart(name: p.name, args: p.args),
@@ -309,8 +309,8 @@ class AiContent {
   }
 
   /// Creates from Google Generative AI SDK content
-  static AiContent fromSdk(Content content) {
-    final domainParts = content.parts.map(AiPart.fromSdk).toList();
+  static AiContent fromGoogleGenAi(Content content) {
+    final domainParts = content.parts.map(AiPart.fromGoogleGenAi).toList();
     return AiContent(role: content.role ?? 'unknown', parts: domainParts);
   }
 
@@ -341,8 +341,8 @@ class AiCandidate {
   const AiCandidate({required this.content});
 
   /// Creates from Google Generative AI SDK candidate
-  static AiCandidate fromSdk(Candidate candidate) =>
-      AiCandidate(content: AiContent.fromSdk(candidate.content));
+  static AiCandidate fromGoogleGenAi(Candidate candidate) =>
+      AiCandidate(content: AiContent.fromGoogleGenAi(candidate.content));
 
   @override
   bool operator ==(Object other) =>
@@ -363,9 +363,9 @@ class AiResponse {
   const AiResponse({required this.candidates});
 
   /// Creates from Google Generative AI SDK response
-  static AiResponse fromSdk(GenerateContentResponse response) {
+  static AiResponse fromGoogleGenAi(GenerateContentResponse response) {
     final domainCandidates =
-        response.candidates.map(AiCandidate.fromSdk).toList();
+        response.candidates.map(AiCandidate.fromGoogleGenAi).toList();
     return AiResponse(candidates: domainCandidates);
   }
 
@@ -394,7 +394,7 @@ class AiStreamChunk {
   const AiStreamChunk({required this.textDelta});
 
   /// Creates from Google Generative AI SDK chunk
-  static AiStreamChunk fromSdk(GenerateContentResponse chunk) =>
+  static AiStreamChunk fromGoogleGenAi(GenerateContentResponse chunk) =>
       AiStreamChunk(textDelta: chunk.text ?? "");
 
   @override
