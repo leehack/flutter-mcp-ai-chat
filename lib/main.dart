@@ -1,66 +1,44 @@
-// lib/main.dart (Modified for Pre-loading Settings with isActive)
-import 'dart:convert'; // For JSON decoding
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'chat_screen.dart';
-import 'mcp/mcp_server_config.dart'; // Import updated config class
-import 'settings_screen.dart';
-import 'settings_service.dart'; // Import service and providers
+// Application Layer (Providers managed by SettingsService/Notifier)
+import 'application/settings_providers.dart';
+import 'domains/settings/data/settings_repository_impl.dart';
+// Presentation Layer
+import 'presentation/chat_screen.dart';
+import 'presentation/settings_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
 
-  // Load initial values directly from prefs
-  final initialApiKey = prefs.getString(apiKeyStorageKey);
-  final initialShowCodeBlocks = prefs.getBool(showCodeBlocksKey) ?? true;
-  // Load server list including their isActive status
-  final initialServerList = _loadInitialServerList(prefs);
-  // Removed: final initialActiveServerId = prefs.getString(activeMcpServerIdKey);
+  // Create a temporary repository instance JUST for loading initial values
+  final initialSettingsRepo = SettingsRepositoryImpl(prefs);
+
+  // Load initial values directly using the temporary repository
+  final initialApiKey = await initialSettingsRepo.getApiKey();
+  // REMOVED: final initialShowCodeBlocks = await initialSettingsRepo.getShowCodeBlocks();
+  final initialServerList = await initialSettingsRepo.getMcpServerList();
 
   runApp(
     ProviderScope(
       overrides: [
-        prefsProvider.overrideWithValue(prefs),
+        // Provide the SharedPreferences instance
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        // Provide the concrete repository implementation
+        settingsRepositoryProvider.overrideWith(
+          (ref) => SettingsRepositoryImpl(ref.watch(sharedPreferencesProvider)),
+        ),
+        // Override state providers with initially loaded values
         apiKeyProvider.overrideWith((ref) => initialApiKey),
-        showCodeBlocksProvider.overrideWith((ref) => initialShowCodeBlocks),
-        // Provide the fully loaded server list (with isActive flags)
+        // REMOVED: showCodeBlocksProvider override
+        // showCodeBlocksProvider.overrideWith((ref) => initialShowCodeBlocks),
         mcpServerListProvider.overrideWith((ref) => initialServerList),
-        // Removed: activeMcpServerIdProvider override
       ],
       child: const MyApp(),
     ),
   );
-}
-
-// Helper function to load initial server list (handles isActive)
-List<McpServerConfig> _loadInitialServerList(SharedPreferences prefs) {
-  try {
-    final serverListJson = prefs.getString(mcpServerListKey);
-    debugPrint("Loaded server list JSON from prefs: $serverListJson");
-    if (serverListJson != null && serverListJson.isNotEmpty) {
-      final decodedList = jsonDecode(serverListJson) as List;
-      // Use the updated McpServerConfig.fromJson which handles 'isActive'
-      final configList =
-          decodedList
-              .map(
-                (item) =>
-                    McpServerConfig.fromJson(item as Map<String, dynamic>),
-              )
-              .toList();
-      debugPrint(
-        "Successfully parsed ${configList.length} servers from storage.",
-      );
-      return configList;
-    }
-    return [];
-  } catch (e) {
-    debugPrint("Error loading/parsing initial server list in main: $e");
-    return [];
-  }
 }
 
 class MyApp extends StatelessWidget {
@@ -69,7 +47,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Gemini Chat Desktop (Multi-MCP)',
+      title: 'Gemini Chat Desktop (Refactored)',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -80,8 +58,9 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       initialRoute: '/',
       routes: {
-        '/': (context) => const ChatScreen(),
-        '/settings': (context) => const SettingsScreen(),
+        '/': (context) => const ChatScreen(), // From presentation layer
+        '/settings':
+            (context) => const SettingsScreen(), // From presentation layer
       },
       debugShowCheckedModeBanner: false,
     );

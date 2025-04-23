@@ -1,16 +1,21 @@
-// lib/settings_screen.dart (Simplify environment variable layout)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
+import 'package:uuid/uuid.dart'; // Keep for local dialog state ID generation
 
-import 'mcp/mcp.dart';
-import 'settings_service.dart';
+// Application Layer
+import '../application/settings_service.dart'; // Service for actions
+import '../application/settings_providers.dart'; // State providers (apiKey, serverList)
+import '../application/mcp_providers.dart'; // MCP state provider (statuses, errors)
 
-const _uuid = Uuid();
+// Domain Entity
+import '../domains/settings/entity/mcp_server_config.dart';
+import '../domains/mcp/entity/mcp_models.dart'; // For McpConnectionStatus enum
 
-// Helper class for managing Key-Value pairs in the dialog state
+const _uuid = Uuid(); // For local state management (e.g., env var pairs)
+
+// Helper class for managing Key-Value pairs in the dialog state (UI concern)
 class _EnvVarPair {
-  final String id; // Unique ID for list management
+  final String id;
   final TextEditingController keyController;
   final TextEditingController valueController;
 
@@ -18,6 +23,7 @@ class _EnvVarPair {
     : id = _uuid.v4(),
       keyController = TextEditingController(),
       valueController = TextEditingController();
+
   _EnvVarPair.fromMapEntry(MapEntry<String, String> entry)
     : id = _uuid.v4(),
       keyController = TextEditingController(text: entry.key),
@@ -42,6 +48,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize controller with value from the state provider
     _apiKeyController = TextEditingController(text: ref.read(apiKeyProvider));
   }
 
@@ -60,31 +67,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  // --- API Key Methods (Unchanged) ---
+  // --- API Key Methods ---
   void _saveApiKey() {
     final newApiKey = _apiKeyController.text.trim();
     if (newApiKey.isNotEmpty) {
+      // Use the SettingsService to perform the action
       ref
           .read(settingsServiceProvider)
           .saveApiKey(newApiKey)
-          .then((_) {
-            _showSnackbar('API Key Saved!');
-          })
-          .catchError((e) {
-            _showSnackbar('Error saving API Key: $e');
-          });
+          .then((_) => _showSnackbar('API Key Saved!'))
+          .catchError((e) => _showSnackbar('Error saving API Key: $e'));
     } else {
       _showSnackbar('API Key cannot be empty.');
     }
-    FocusScope.of(context).unfocus();
+    FocusScope.of(context).unfocus(); // Dismiss keyboard
   }
 
   void _clearApiKey() {
+    // Use the SettingsService
     ref
         .read(settingsServiceProvider)
         .clearApiKey()
         .then((_) {
-          _apiKeyController.clear();
+          _apiKeyController.clear(); // Clear local controller on success
           _showSnackbar('API Key Cleared!');
         })
         .catchError((e) {
@@ -93,20 +98,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     FocusScope.of(context).unfocus();
   }
 
-  // --- MCP Action Methods (Unchanged) ---
+  // REMOVED: _toggleShowCodeBlocks method is no longer needed.
+  /*
+  void _toggleShowCodeBlocks(bool value) {
+    ref
+        .read(settingsServiceProvider)
+        .saveShowCodeBlocks(value)
+        .catchError((e) => _showSnackbar('Error saving display setting: $e'));
+  }
+  */
+
+  // --- MCP Action Methods ---
   void _toggleServerActive(String serverId, bool isActive) {
+    // Use SettingsService to update the state provider list
     ref
         .read(settingsServiceProvider)
         .toggleMcpServerActive(serverId, isActive)
-        .then((_) {})
-        .catchError((e) {
-          _showSnackbar('Error updating server active state: $e');
-        });
-  }
-
-  void _applyMcpChanges() {
-    _showSnackbar('Applying MCP connection changes...');
-    ref.read(mcpClientProvider.notifier).syncConnections();
+        .catchError(
+          (e) => _showSnackbar('Error updating server active state: $e'),
+        );
+    // Note: syncConnections will be triggered automatically by the McpClientNotifier
+    // listening to the mcpServerListProvider change.
   }
 
   void _deleteServer(McpServerConfig server) {
@@ -116,7 +128,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return AlertDialog(
           title: const Text('Delete Server?'),
           content: Text(
-            'Are you sure you want to delete the server "${server.name}"? This cannot be undone.',
+            'Are you sure you want to delete the server "${server.name}"?',
           ),
           actions: <Widget>[
             TextButton(
@@ -130,15 +142,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               child: const Text('Delete'),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
+                // Use SettingsService to delete from the state provider list
                 ref
                     .read(settingsServiceProvider)
                     .deleteMcpServer(server.id)
-                    .then((_) {
-                      _showSnackbar('Server "${server.name}" deleted.');
-                    })
-                    .catchError((e) {
-                      _showSnackbar('Error deleting server: $e');
-                    });
+                    .then(
+                      (_) => _showSnackbar('Server "${server.name}" deleted.'),
+                    )
+                    .catchError(
+                      (e) => _showSnackbar('Error deleting server: $e'),
+                    );
               },
             ),
           ],
@@ -147,9 +160,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  // --- MCP Add/Edit Dialog (Flattened Env Var Layout) ---
+  // --- MCP Add/Edit Dialog ---
   Future<void> _showServerDialog({McpServerConfig? serverToEdit}) async {
     final isEditing = serverToEdit != null;
+    // Initialize controllers and state for the dialog
     final nameController = TextEditingController(
       text: serverToEdit?.name ?? '',
     );
@@ -159,7 +173,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final argsController = TextEditingController(
       text: serverToEdit?.args ?? '',
     );
-    bool isActive = serverToEdit?.isActive ?? false;
+    bool isActive =
+        serverToEdit?.isActive ??
+        false; // Initial active state for the dialog switch
+    // Local state for environment variables within the dialog
     List<_EnvVarPair> envVars =
         serverToEdit?.customEnvironment.entries
             .map((e) => _EnvVarPair.fromMapEntry(e))
@@ -167,15 +184,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         [];
     final formKey = GlobalKey<FormState>();
 
+    // List to keep track of controllers to dispose
+    List<TextEditingController> dialogControllers = [
+      nameController,
+      commandController,
+      argsController,
+    ];
+    for (var pair in envVars) {
+      dialogControllers.add(pair.keyController);
+      dialogControllers.add(pair.valueController);
+    }
+
     return showDialog<void>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: false, // Prevent closing on outside tap
       builder: (BuildContext dialogContext) {
+        // Use StatefulBuilder to manage local dialog state (isActive, envVars list)
         return StatefulBuilder(
           builder: (context, setDialogState) {
             void addEnvVar() {
               setDialogState(() {
-                envVars.add(_EnvVarPair());
+                final newPair = _EnvVarPair();
+                envVars.add(newPair);
+                // Add new controllers to the list for disposal
+                dialogControllers.add(newPair.keyController);
+                dialogControllers.add(newPair.valueController);
               });
             }
 
@@ -183,8 +216,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               setDialogState(() {
                 final pairIndex = envVars.indexWhere((p) => p.id == id);
                 if (pairIndex != -1) {
-                  envVars[pairIndex].dispose();
-                  envVars.removeAt(pairIndex);
+                  final pairToRemove = envVars[pairIndex];
+                  // Remove controllers from disposal list *before* disposing them
+                  dialogControllers.remove(pairToRemove.keyController);
+                  dialogControllers.remove(pairToRemove.valueController);
+                  pairToRemove.dispose(); // Dispose controllers
+                  envVars.removeAt(pairIndex); // Remove pair from list
                 }
               });
             }
@@ -199,7 +236,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      // --- Standard Fields ---
                       TextFormField(
                         controller: nameController,
                         decoration: const InputDecoration(
@@ -234,15 +270,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       const SizedBox(height: 12),
                       SwitchListTile(
-                        title: const Text('Connect on Apply'),
-                        value: isActive,
+                        title: const Text('Connect Automatically'),
+                        subtitle: const Text('Applies when settings change'),
+                        value: isActive, // Use local dialog state
                         onChanged:
-                            (bool value) =>
-                                setDialogState(() => isActive = value),
+                            (bool value) => setDialogState(
+                              () => isActive = value,
+                            ), // Update local dialog state
                         contentPadding: EdgeInsets.zero,
                       ),
                       const Divider(height: 20),
-
                       // --- Custom Environment Variables Section ---
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -259,12 +296,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ],
                       ),
                       const Text(
-                        'These variables passed to the server override system variables.',
+                        'Overrides system variables.',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 8),
-
-                      // *** Directly spread the generated Widgets into the Column ***
                       if (envVars.isEmpty)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 8.0),
@@ -278,9 +313,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         )
                       else
                         ...envVars.map((pair) {
-                          // Use spread operator (...)
                           return Padding(
-                            key: ValueKey(pair.id), // Keep the key
+                            key: ValueKey(
+                              pair.id,
+                            ), // Important for list updates
                             padding: const EdgeInsets.symmetric(vertical: 4.0),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
@@ -318,8 +354,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ],
                             ),
                           );
-                        }), // Still need toList() for the map result
-
+                        }),
                       const SizedBox(height: 16), // Bottom padding
                     ],
                   ),
@@ -328,23 +363,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               actions: <Widget>[
                 TextButton(
                   child: const Text('Cancel'),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                  },
+                  onPressed:
+                      () =>
+                          Navigator.of(
+                            dialogContext,
+                          ).pop(), // Just close dialog
                 ),
                 TextButton(
                   child: Text(isEditing ? 'Save Changes' : 'Add Server'),
                   onPressed: () {
-                    // SAVE LOGIC
                     if (formKey.currentState!.validate()) {
                       final name = nameController.text.trim();
                       final command = commandController.text.trim();
                       final args = argsController.text.trim();
                       final Map<String, String> customEnvMap = {};
                       bool envVarError = false;
+                      // Validate and collect env vars
                       for (var pair in envVars) {
                         final key = pair.keyController.text.trim();
-                        final value = pair.valueController.text;
+                        final value =
+                            pair.valueController.text; // Allow empty values
                         if (key.isNotEmpty) {
                           if (customEnvMap.containsKey(key)) {
                             _showSnackbar(
@@ -355,51 +393,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           }
                           customEnvMap[key] = value;
                         } else if (value.isNotEmpty) {
+                          // Key is empty but value is not - ignore or warn
                           debugPrint(
                             "Ignoring env var with empty key and non-empty value.",
                           );
                         }
                       }
+                      if (envVarError) {
+                        return; // Don't proceed if duplicates found
+                      }
 
-                      if (envVarError) return;
+                      Navigator.of(dialogContext).pop(); // Close dialog first
 
-                      Navigator.of(dialogContext).pop();
-
-                      Future<void> futureAction;
+                      // Use SettingsService to add or update
+                      final settingsService = ref.read(settingsServiceProvider);
+                      Future<void> action;
                       if (isEditing) {
                         final updatedServer = serverToEdit.copyWith(
                           name: name,
                           command: command,
                           args: args,
-                          isActive: isActive,
+                          isActive: isActive, // Use state from dialog
                           customEnvironment: customEnvMap,
                         );
-                        futureAction = ref
-                            .read(settingsServiceProvider)
-                            .updateMcpServer(updatedServer);
-                        futureAction.then(
-                          (_) => _showSnackbar(
-                            'Server "${updatedServer.name}" updated.',
-                          ),
-                        );
+                        action = settingsService
+                            .updateMcpServer(updatedServer)
+                            .then(
+                              (_) => _showSnackbar(
+                                'Server "${updatedServer.name}" updated.',
+                              ),
+                            );
                       } else {
-                        final newServer = McpServerConfig(
-                          id: _uuid.v4(),
-                          name: name,
-                          command: command,
-                          args: args,
-                          isActive: isActive,
-                          customEnvironment: customEnvMap,
-                        );
-                        final currentList = ref.read(mcpServerListProvider);
-                        futureAction = ref
-                            .read(settingsServiceProvider)
-                            .saveMcpServerList([...currentList, newServer]);
-                        futureAction.then(
-                          (_) => _showSnackbar('Server "$name" added.'),
-                        );
+                        action = settingsService
+                            .addMcpServer(name, command, args, customEnvMap)
+                            .then(
+                              (_) => _showSnackbar('Server "$name" added.'),
+                            );
                       }
-                      futureAction.catchError(
+                      action.catchError(
                         (e) => _showSnackbar('Error saving server: $e'),
                       );
                     }
@@ -410,18 +441,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           },
         );
       },
-    );
-    // .whenComplete(() {
-    //   // Dispose ALL controllers created for this dialog instance here.
-    //   debugPrint("Disposing all dialog controllers in whenComplete...");
-    //   nameController.dispose();
-    //   commandController.dispose();
-    //   argsController.dispose();
-    //   disposeEnvVarControllers(); // Dispose env var controllers
-    // });
+    ).whenComplete(() {
+      // Dispose all controllers created for this dialog instance
+      debugPrint("Disposing ${dialogControllers.length} dialog controllers.");
+      for (var controller in dialogControllers) {
+        controller.dispose();
+      }
+    });
   }
 
-  // Helper to get status icon (Unchanged)
+  // Helper to get status icon
   Widget _buildStatusIcon(McpConnectionStatus status, ThemeData theme) {
     switch (status) {
       case McpConnectionStatus.connected:
@@ -435,6 +464,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       case McpConnectionStatus.error:
         return Icon(Icons.error, color: theme.colorScheme.error, size: 20);
       case McpConnectionStatus.disconnected:
+        // Handle any unexpected status gracefully
         return Icon(
           Icons.circle_outlined,
           color: theme.disabledColor,
@@ -443,25 +473,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  // build method remains the same
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Watch state providers
     final currentApiKey = ref.watch(apiKeyProvider);
-    final showCodeBlocks = ref.watch(showCodeBlocksProvider);
-    final mcpState = ref.watch(mcpClientProvider);
-    final serverList = mcpState.serverConfigs;
+    // REMOVED: final showCodeBlocks = ref.watch(showCodeBlocksProvider);
+    final serverList = ref.watch(mcpServerListProvider); // List of configs
+    final mcpState = ref.watch(mcpClientProvider); // Statuses and errors
+
     final serverStatuses = mcpState.serverStatuses;
     final serverErrors = mcpState.serverErrorMessages;
-    int connectedCount = mcpState.connectedServerCount;
+    final connectedCount = mcpState.connectedServerCount;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        // This is the outer ListView for the whole settings page
         padding: const EdgeInsets.all(16.0),
         children: [
-          // --- API Key Section (Unchanged) ---
+          // --- API Key Section ---
           const Text(
             'Gemini API Key',
             style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
@@ -475,6 +505,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               border: OutlineInputBorder(),
               suffixIcon: Icon(Icons.vpn_key),
             ),
+            onChanged: (value) {
+              // Optionally enable save button only when text changes
+            },
             onSubmitted: (_) => _saveApiKey(),
           ),
           const SizedBox(height: 8.0),
@@ -484,7 +517,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ElevatedButton.icon(
                 icon: const Icon(Icons.save),
                 label: const Text('Save Key'),
-                onPressed: _saveApiKey,
+                onPressed: _saveApiKey, // Always enabled for simplicity here
               ),
               if (currentApiKey != null && currentApiKey.isNotEmpty)
                 TextButton.icon(
@@ -499,7 +532,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 4.0),
           const Text(
-            'Stored locally using SharedPreferences.',
+            'Stored locally.',
             style: TextStyle(
               fontSize: 12.0,
               fontStyle: FontStyle.italic,
@@ -508,7 +541,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const Divider(height: 24.0),
 
-          // --- Display Settings Section (Unchanged) ---
+          // REMOVED: Display Settings Section (Show Code Blocks)
+          /*
           const Text(
             'Display Settings',
             style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
@@ -518,13 +552,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: const Text(
               'Render code blocks formatted in chat messages.',
             ),
-            value: showCodeBlocks,
-            onChanged:
-                (value) =>
-                    ref.read(settingsServiceProvider).saveShowCodeBlocks(value),
+            value: showCodeBlocks, // This variable is removed
+            onChanged: _toggleShowCodeBlocks, // This method is removed
             secondary: const Icon(Icons.code),
           ),
           const Divider(height: 24.0),
+          */
 
           // --- MCP Server Section ---
           Row(
@@ -535,61 +568,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 'MCP Servers',
                 style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
               ),
-              Row(
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.sync, size: 18),
-                    label: const Text('Apply Changes'),
-                    onPressed: _applyMcpChanges,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      textStyle: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    tooltip: 'Add New MCP Server',
-                    onPressed: () => _showServerDialog(),
-                  ),
-                ],
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: 'Add New MCP Server',
+                onPressed: () => _showServerDialog(), // Show add dialog
               ),
             ],
           ),
           const SizedBox(height: 4.0),
           Text(
-            '$connectedCount server(s) connected. Toggle switches below and press "Apply Changes".',
+            '$connectedCount server(s) connected. Changes are applied automatically.',
             style: const TextStyle(fontSize: 12.0, color: Colors.grey),
           ),
           const SizedBox(height: 12.0),
 
-          // Server List Display (This is the outer ListView for the servers)
+          // Server List Display
           serverList.isEmpty
               ? const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24.0),
                 child: Center(
                   child: Text(
-                    "No MCP servers configured. Click '+' above to add one.",
+                    "No MCP servers configured. Click '+' to add.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey),
                   ),
                 ),
               )
               : ListView.builder(
-                // This ListView should be fine here
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+                shrinkWrap: true, // Important inside another ListView
+                physics:
+                    const NeverScrollableScrollPhysics(), // Disable scrolling for inner list
                 itemCount: serverList.length,
                 itemBuilder: (context, index) {
                   final server = serverList[index];
+                  // Get status and error from the mcpState provider maps
                   final status =
                       serverStatuses[server.id] ??
                       McpConnectionStatus.disconnected;
                   final error = serverErrors[server.id];
-                  final bool userWantsActive = server.isActive;
+                  final bool userWantsActive =
+                      server.isActive; // From the config object
                   final int customEnvCount = server.customEnvironment.length;
 
                   return Card(
@@ -604,10 +622,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: _buildStatusIcon(status, theme),
                           ),
                           trailing: Switch(
-                            value: userWantsActive,
-                            onChanged: (bool value) {
-                              _toggleServerActive(server.id, value);
-                            },
+                            value:
+                                userWantsActive, // Reflects the desired state from config
+                            onChanged:
+                                (bool value) => _toggleServerActive(
+                                  server.id,
+                                  value,
+                                ), // Update desired state
                             activeColor: theme.colorScheme.primary,
                           ),
                           title: Text(
@@ -642,8 +663,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ],
                           ),
                           onLongPress:
-                              () => _showServerDialog(serverToEdit: server),
+                              () => _showServerDialog(
+                                serverToEdit: server,
+                              ), // Edit on long press
                         ),
+                        // Error and Action Row
                         Padding(
                           padding: const EdgeInsets.only(
                             left: 52.0,
@@ -657,16 +681,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               Expanded(
                                 child:
                                     error != null
-                                        ? Text(
-                                          'Error: $error',
-                                          style: TextStyle(
-                                            color: theme.colorScheme.error,
-                                            fontSize: 11,
+                                        ? Tooltip(
+                                          // Show full error on hover/long press
+                                          message: error,
+                                          child: Text(
+                                            'Error: $error',
+                                            style: TextStyle(
+                                              color: theme.colorScheme.error,
+                                              fontSize: 11,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 2,
                                           ),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 2,
                                         )
-                                        : const SizedBox(height: 14),
+                                        : const SizedBox(
+                                          height: 14,
+                                        ), // Placeholder for height consistency
                               ),
                               Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -705,7 +735,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   );
                 },
               ),
-          const SizedBox(height: 12.0),
+          const SizedBox(height: 12.0), // Bottom padding
         ],
       ),
     );

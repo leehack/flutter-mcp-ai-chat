@@ -1,10 +1,13 @@
-// chat_screen.dart (Request focus when loading finishes)
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:collection/collection.dart'; // For firstWhereOrNull
 
-import 'chat_state.dart';
-import 'mcp/mcp.dart';
+import '../application/chat_notifier.dart'; // Application layer notifier
+import '../domains/chat/entity/chat_message.dart'; // Domain entity
+import '../application/mcp_providers.dart'; // To get MCP connection count
+import '../application/settings_providers.dart'; // To get server names for display
+import '../domains/settings/entity/mcp_server_config.dart'; // Need type for serverConfigs list
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -31,10 +34,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (text.trim().isNotEmpty) {
       final messageToSend = text.trim();
       _textController.clear();
+      // Call the notifier method to send the message
       ref.read(chatProvider.notifier).sendMessage(messageToSend);
-      // *** REMOVED focus request from here ***
     }
-    // No need to refocus if input was empty
+    // Refocus handled by listener on isLoading change
   }
 
   void _clearChat() {
@@ -49,9 +52,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(),
             ),
             TextButton(
               style: TextButton.styleFrom(
@@ -59,9 +60,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               child: const Text('Clear Chat'),
               onPressed: () {
-                ref.read(chatProvider.notifier).clearChat();
+                ref.read(chatProvider.notifier).clearChat(); // Call notifier
                 Navigator.of(dialogContext).pop();
-                // Keep refocus after clearing chat
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (_inputFocusNode.context != null) {
                     _inputFocusNode.requestFocus();
@@ -89,17 +89,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the application layer notifier state
     final chatState = ref.watch(chatProvider);
-    final mcpState = ref.watch(mcpClientProvider);
+    final mcpState = ref.watch(
+      mcpClientProvider,
+    ); // Watch MCP state for connection count
+    final serverConfigs = ref.watch(
+      mcpServerListProvider,
+    ); // Watch server list for names
+
     final messages = chatState.displayMessages;
     final isLoading = chatState.isLoading;
     final isApiKeySet = chatState.isApiKeySet;
-    final showCodeBlocks = chatState.showCodeBlocks;
+    // REMOVED: final showCodeBlocks = chatState.showCodeBlocks;
     final connectedServerCount = mcpState.connectedServerCount;
 
     // --- Listeners ---
 
-    // Listener for auto-scrolling on new messages
+    // Auto-scroll on new messages
     ref.listen(chatProvider.select((state) => state.displayMessages.length), (
       _,
       __,
@@ -107,24 +114,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _scrollToBottom();
     });
 
-    // Listener for auto-scrolling when loading starts
-    // ref.listen(chatProvider.select((state) => state.isLoading), (previous, next) {
-    //   // Scroll when loading starts
-    //   if (next == true && previous == false) {
-    //      _scrollToBottom();
-    //   }
-    // });
-    // Note: Scrolling on new message might be sufficient, keeping the above commented for now.
-
-    // *** ADDED: Listener to refocus input when loading finishes ***
+    // Refocus input when loading finishes
     ref.listen(chatProvider.select((state) => state.isLoading), (
       bool? previous,
       bool next,
     ) {
-      // Check if loading state changed from true to false
       if (previous == true && next == false) {
+        // Loading finished
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Check if the node is still mounted before requesting focus
           if (_inputFocusNode.context != null) {
             _inputFocusNode.requestFocus();
           }
@@ -136,7 +133,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Row(
-          /* ... AppBar Title ... */
           children: [
             const Text('Gemini Chat'),
             const Spacer(),
@@ -177,7 +173,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
         actions: [
-          /* ... AppBar Actions ... */
           if (messages.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_sweep),
@@ -187,34 +182,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
-            onPressed: () {
-              Navigator.pushNamed(context, '/settings');
-            },
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            /* ... ListView ... */
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(8.0),
               itemCount: messages.length,
               itemBuilder: (context, index) {
                 final message = messages[index];
-                return _buildMessageBubble(context, message, showCodeBlocks);
+                // Pass server configs to potentially resolve names if not already in message
+                // Removed showCodeBlocks parameter
+                return _buildMessageBubble(context, message, serverConfigs);
               },
             ),
           ),
-          if (isLoading) /* ... Loading Indicator ... */
+          if (isLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8.0),
               child: LinearProgressIndicator(),
             ),
-          // Input area
           Padding(
-            /* ... Input Row ... */
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
@@ -256,7 +248,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ],
             ),
           ),
-          if (!isApiKeySet) /* ... API Key Message ... */
+          if (!isApiKeySet)
             Padding(
               padding: const EdgeInsets.only(
                 bottom: 8.0,
@@ -274,37 +266,52 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  // _buildMessageBubble remains the same as chat_screen_v4
   Widget _buildMessageBubble(
     BuildContext context,
     ChatMessage message,
-    bool showCodeBlocks,
+    List<McpServerConfig> serverConfigs, // Removed showCodeBlocks parameter
   ) {
     final theme = Theme.of(context);
     final isUser = message.isUser;
+    // Always assume code blocks are enabled now
+    final bool showCodeBlocks = true;
 
     Widget messageContent;
     List<Widget> children = [];
 
+    // Render text or markdown
     if (isUser || !showCodeBlocks) {
+      // Kept logic structure, but showCodeBlocks is always true
       messageContent = SelectableText(message.text);
     } else {
-      messageContent = MarkdownBody(data: message.text, selectable: true);
+      // Handle potential Markdown rendering errors gracefully
+      try {
+        messageContent = MarkdownBody(data: message.text, selectable: true);
+      } catch (e) {
+        debugPrint("Markdown rendering error: $e");
+        messageContent = SelectableText(
+          "Error rendering message content.\n\n${message.text}",
+        );
+      }
     }
     children.add(messageContent);
 
+    // Add tool call information if present
     if (!isUser && message.toolName != null) {
       children.add(const Divider(height: 10, thickness: 0.5));
-      String toolSourceInfo = "Tool Called: ${message.toolName}";
-      if (message.sourceServerName != null) {
-        toolSourceInfo += " (on ${message.sourceServerName})";
-      } else if (message.sourceServerId != null) {
-        final shortId =
-            message.sourceServerId!.length > 6
-                ? message.sourceServerId!.substring(0, 6)
-                : message.sourceServerId;
-        toolSourceInfo += " (on Server $shortId...)";
-      }
+
+      // Try to use pre-fetched name, otherwise look up from configs
+      String serverDisplayName =
+          message.sourceServerName ??
+          serverConfigs
+              .firstWhereOrNull((s) => s.id == message.sourceServerId)
+              ?.name ??
+          (message.sourceServerId != null
+              ? 'Server ${message.sourceServerId!.substring(0, 6)}...'
+              : 'Unknown Server');
+
+      String toolSourceInfo =
+          "Tool Called: ${message.toolName} (on $serverDisplayName)";
 
       children.add(
         Padding(

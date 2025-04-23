@@ -1,15 +1,14 @@
-// lib/mcp_server_config.dart
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart'; // For MapEquality
 
+/// Configuration for a single MCP server.
 @immutable
 class McpServerConfig {
   final String id; // Unique ID
   final String name;
   final String command;
   final String args;
-  final bool isActive;
-  // New: Custom environment variables for this server
+  final bool isActive; // User's desired state (connect on apply)
   final Map<String, String> customEnvironment;
 
   const McpServerConfig({
@@ -18,17 +17,16 @@ class McpServerConfig {
     required this.command,
     required this.args,
     this.isActive = false,
-    this.customEnvironment = const {}, // Default to empty map
+    this.customEnvironment = const {},
   });
 
-  // Method to create a copy with updated values
   McpServerConfig copyWith({
     String? id,
     String? name,
     String? command,
     String? args,
     bool? isActive,
-    Map<String, String>? customEnvironment, // Allow updating environment
+    Map<String, String>? customEnvironment,
   }) {
     return McpServerConfig(
       id: id ?? this.id,
@@ -36,27 +34,23 @@ class McpServerConfig {
       command: command ?? this.command,
       args: args ?? this.args,
       isActive: isActive ?? this.isActive,
-      customEnvironment:
-          customEnvironment ?? this.customEnvironment, // Update env
+      customEnvironment: customEnvironment ?? this.customEnvironment,
     );
   }
 
-  // For saving/loading from SharedPreferences via JSON
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'command': command,
     'args': args,
     'isActive': isActive,
-    'customEnvironment': customEnvironment, // Include custom env
+    'customEnvironment': customEnvironment,
   };
 
   factory McpServerConfig.fromJson(Map<String, dynamic> json) {
-    // Safely parse the custom environment map
     Map<String, String> environment = {};
     if (json['customEnvironment'] is Map) {
       try {
-        // Ensure keys and values are strings
         environment = Map<String, String>.from(
           (json['customEnvironment'] as Map).map(
             (k, v) => MapEntry(k.toString(), v.toString()),
@@ -66,7 +60,6 @@ class McpServerConfig {
         debugPrint(
           "Error parsing customEnvironment for server ${json['id']}: $e",
         );
-        // Keep environment as empty map on error
       }
     }
 
@@ -76,7 +69,7 @@ class McpServerConfig {
       command: json['command'] as String,
       args: json['args'] as String,
       isActive: json['isActive'] as bool? ?? false,
-      customEnvironment: environment, // Use parsed map
+      customEnvironment: environment,
     );
   }
 
@@ -90,7 +83,6 @@ class McpServerConfig {
           command == other.command &&
           args == other.args &&
           isActive == other.isActive &&
-          // Compare environment maps
           const MapEquality().equals(
             customEnvironment,
             other.customEnvironment,
@@ -103,6 +95,5 @@ class McpServerConfig {
       command.hashCode ^
       args.hashCode ^
       isActive.hashCode ^
-      // Include environment map hash
       const MapEquality().hash(customEnvironment);
 }
