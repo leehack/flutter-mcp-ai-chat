@@ -2,51 +2,43 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_chat_desktop/domains/ai/data/ai_repository_impl.dart';
-import 'package:flutter_chat_desktop/domains/mcp/data/mcp_repository_impl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domains/ai/entity/ai_entities.dart';
 import '../domains/ai/repository/ai_repository.dart';
-// Domain Entities
 import '../domains/chat/entity/chat_message.dart';
 import '../domains/mcp/entity/mcp_models.dart';
 import '../domains/mcp/repository/mcp_repository.dart';
+import '../domains/ai/data/ai_repository_impl.dart';
+import '../domains/mcp/data/mcp_repository_impl.dart';
 import 'mcp_providers.dart';
-// Application Providers
 import 'settings_providers.dart';
 
-// --- Chat State ---
 @immutable
 class ChatState {
-  final List<ChatMessage> displayMessages; // Messages shown in UI
-  final List<AiContent>
-  chatHistory; // History sent to AI (structured using AI domain entities)
+  final List<ChatMessage> displayMessages;
+  final List<AiContent> chatHistory;
   final bool isLoading;
   final bool isApiKeySet;
-  // REMOVED: final bool showCodeBlocks;
 
   const ChatState({
     this.displayMessages = const [],
     this.chatHistory = const [],
     this.isLoading = false,
     this.isApiKeySet = false,
-    // REMOVED: this.showCodeBlocks = true,
   });
 
   ChatState copyWith({
     List<ChatMessage>? displayMessages,
-    List<AiContent>? chatHistory, // Use AiContent
+    List<AiContent>? chatHistory,
     bool? isLoading,
     bool? isApiKeySet,
-    // REMOVED: bool? showCodeBlocks,
   }) {
     return ChatState(
       displayMessages: displayMessages ?? this.displayMessages,
       chatHistory: chatHistory ?? this.chatHistory,
       isLoading: isLoading ?? this.isLoading,
       isApiKeySet: isApiKeySet ?? this.isApiKeySet,
-      // REMOVED: showCodeBlocks: showCodeBlocks ?? this.showCodeBlocks,
     );
   }
 
@@ -56,50 +48,30 @@ class ChatState {
       other is ChatState &&
           runtimeType == other.runtimeType &&
           const ListEquality().equals(displayMessages, other.displayMessages) &&
-          const ListEquality().equals(
-            chatHistory,
-            other.chatHistory,
-          ) && // Compare AiContent lists
+          const ListEquality().equals(chatHistory, other.chatHistory) &&
           isLoading == other.isLoading &&
           isApiKeySet == other.isApiKeySet;
-  // REMOVED: && showCodeBlocks == other.showCodeBlocks;
 
   @override
   int get hashCode =>
       const ListEquality().hash(displayMessages) ^
-      const ListEquality().hash(chatHistory) ^ // Hash AiContent list
+      const ListEquality().hash(chatHistory) ^
       isLoading.hashCode ^
       isApiKeySet.hashCode;
-  // REMOVED: ^ showCodeBlocks.hashCode;
 }
 
-// --- Chat Notifier ---
 class ChatNotifier extends StateNotifier<ChatState> {
   final Ref _ref;
   StreamSubscription<dynamic>? _messageSubscription;
 
   ChatNotifier(this._ref) : super(const ChatState()) {
-    // Initialize state based on existing providers
-    state = state.copyWith(
-      isApiKeySet: _ref.read(apiKeyProvider) != null,
-      // REMOVED: showCodeBlocks initialization
-    );
+    state = state.copyWith(isApiKeySet: _ref.read(apiKeyProvider) != null);
 
-    // Listen for API key changes
     _ref.listen<String?>(apiKeyProvider, (_, next) {
       if (mounted) {
         state = state.copyWith(isApiKeySet: next != null);
       }
     });
-
-    // REMOVED: Listener for showCodeBlocksProvider
-    /*
-    _ref.listen<bool>(showCodeBlocksProvider, (_, next) {
-       if (mounted) {
-         state = state.copyWith(showCodeBlocks: next);
-       }
-    });
-    */
 
     _ref.onDispose(() {
       _messageSubscription?.cancel();
@@ -107,11 +79,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
     });
   }
 
-  // Access repositories via ref.read() when needed within methods
   AiRepository? get _aiRepo => _ref.read(aiRepositoryProvider);
   McpRepository get _mcpRepo => _ref.read(mcpRepositoryProvider);
-
-  // --- State Update Helpers ---
 
   void _addDisplayMessage(ChatMessage message) {
     if (!mounted) return;
@@ -136,7 +105,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _addErrorMessage(String errorText, {bool setLoadingFalse = true}) {
     final errorMessage = ChatMessage(text: "Error: $errorText", isUser: false);
     if (!mounted) return;
-    // Ensure we replace the placeholder if the error occurs immediately
+
     final currentMessages = List<ChatMessage>.from(state.displayMessages);
     if (currentMessages.isNotEmpty &&
         !currentMessages.last.isUser &&
@@ -181,8 +150,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (aiRepo == null || !aiRepo.isInitialized) {
       _addErrorMessage(
         "AI Service not available (check API Key).",
-        setLoadingFalse:
-            false, // Keep loading indicator if it was already there
+        setLoadingFalse: false,
       );
       return;
     }
@@ -192,7 +160,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
       text: userMessageText,
       isUser: true,
     );
-    // Create history using domain entities
     final userMessageForHistory = AiContent.user(userMessageText);
     final historyForApi = List<AiContent>.from(state.chatHistory);
 
@@ -211,23 +178,18 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (useMcp) {
         // --- MCP Orchestration Path ---
         debugPrint("ChatNotifier: Orchestrating query via MCP...");
-        // Call the orchestration helper method
         final AiResponse finalAiResponse = await _orchestrateMcpQuery(
           userMessageText,
           historyForApi,
           aiRepo,
-          _mcpRepo, // Pass repository instance
-          mcpState, // Pass current MCP state
+          _mcpRepo,
+          mcpState,
         );
 
-        // Process the final response from orchestration
         final finalContent = finalAiResponse.firstCandidateContent;
         final historyUpdate = [
           ...historyForApi,
           userMessageForHistory,
-          // TODO: Reconstruct full history including intermediate tool calls/responses
-          // This requires the orchestrator to return more than just the final response.
-          // For now, just add the final model response.
           if (finalContent != null) finalContent,
         ];
 
@@ -235,7 +197,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
           final finalMessage = ChatMessage(
             text: finalContent?.text ?? "(No response from orchestration)",
             isUser: false,
-            // TODO: Add tool info back if the orchestrator provides it
           );
           _updateLastDisplayMessage(finalMessage);
           state = state.copyWith(chatHistory: historyUpdate);
@@ -310,7 +271,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     List<AiContent> history,
     AiRepository aiRepo,
     McpRepository mcpRepo,
-    McpClientState mcpState, // Pass current state
+    McpClientState mcpState,
   ) async {
     debugPrint("ChatNotifier: Orchestrating MCP query...");
 
@@ -334,8 +295,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
       debugPrint(
         "ChatNotifier: No tools translated, proceeding without tools.",
       );
-      // Fallback to direct call if translation fails or yields no tools
-      // This might indicate an issue with the translation logic or tool definitions
       return await aiRepo.generateContent([...history, AiContent.user(text)]);
     }
 
@@ -369,9 +328,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     // --- Tool Call Required ---
     final toolName = functionCall.name;
-    final serverId = mcpState.getServerIdForTool(
-      toolName,
-    ); // Use helper from McpState
+    final serverId = mcpState.getServerIdForTool(toolName);
     if (serverId == null) {
       debugPrint(
         "ChatNotifier: Could not find unique server for tool '$toolName'.",
@@ -427,7 +384,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
 
     // Translate McpContent list to a Map suitable for AiFunctionResponsePart
-    // TODO: Improve translation for non-text/structured data
     final responseData = {
       'result': toolExecutionResult
           .whereType<McpTextContent>()
@@ -445,15 +401,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     final finalHistory = [
       ...historyWithPrompt,
-      initialAiResponse.firstCandidateContent!, // model's function call request
-      toolResponseContent, // tool's response
+      initialAiResponse.firstCandidateContent!,
+      toolResponseContent,
     ];
 
     try {
       // Final call to AI with the tool response included
       final finalAiResponse = await aiRepo.generateContent(finalHistory);
-      // TODO: The orchestrator should ideally return the full history and tool info
-      // for the notifier to update the state correctly.
       return finalAiResponse;
     } catch (e) {
       debugPrint(
@@ -469,16 +423,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  // Placeholder for McpToolDefinition -> AiTool translation
   List<AiTool> _translateMcpToolsToAiTools(List<McpToolDefinition> mcpTools) {
-    // TODO: Implement the complex translation logic here.
-    // This involves recursively converting the Map schema from McpToolDefinition
-    // into the AiSchema sealed class hierarchy defined in ai_entities.dart.
-    // For now, returning an empty list to allow fallback to non-tool calls.
-    debugPrint(
-      "Warning: _translateMcpToolsToAiTools needs full implementation!",
-    );
-
     List<AiTool> translatedTools = [];
     for (var mcpTool in mcpTools) {
       try {
@@ -503,7 +448,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     return translatedTools;
   }
 
-  // Recursive helper for schema translation (basic implementation)
+  // Recursive helper for schema translation
   AiSchema? _translateSchema(Map<String, dynamic>? schemaMap) {
     if (schemaMap == null) return null;
 
@@ -519,16 +464,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
               (schemaMap['required'] as List<dynamic>?)?.cast<String>();
           final aiProperties = properties.map((key, value) {
             if (value is Map<String, dynamic>) {
-              return MapEntry(
-                key,
-                _translateSchema(value)!,
-              ); // Assume non-null for valid properties
+              return MapEntry(key, _translateSchema(value)!);
             } else {
               throw FormatException(
                 "Invalid property value type for key '$key'",
               );
             }
-          }); // Remove entries where translation failed
+          });
 
           return AiObjectSchema(
             properties: aiProperties,
@@ -561,11 +503,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
           debugPrint(
             "Unsupported schema type encountered during translation: $type",
           );
-          return null; // Or throw an error
+          return null;
       }
     } catch (e) {
       debugPrint("Error translating schema fragment (type: $type): $e");
-      return null; // Return null on error during translation
+      return null;
     }
   }
 
@@ -576,7 +518,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (!mounted) return;
     state = state.copyWith(
       displayMessages: [],
-      chatHistory: [], // Clear AiContent history
+      chatHistory: [],
       isLoading: false,
     );
     debugPrint("ChatNotifier: Chat cleared.");

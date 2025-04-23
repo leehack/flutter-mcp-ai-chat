@@ -39,27 +39,6 @@ class SettingsRepositoryImpl implements SettingsRepository {
     }
   }
 
-  // REMOVED: Display Settings (Show Code Blocks)
-  /*
-  @override
-  Future<bool> getShowCodeBlocks() async {
-    // Always return true now, or remove entirely if not needed elsewhere
-    return _prefs.getBool(showCodeBlocksKey) ?? true; // Default to true
-  }
-
-  @override
-  Future<void> saveShowCodeBlocks(bool showCodeBlocks) async {
-    // This method is no longer needed, but kept commented for reference
-    // try {
-    //   await _prefs.setBool(showCodeBlocksKey, showCodeBlocks);
-    // } catch (e) {
-    //   debugPrint("Error saving Show Code Blocks setting in repository: $e");
-    //   rethrow;
-    // }
-    return Future.value(); // Or remove entirely
-  }
-  */
-
   // --- MCP Server List ---
   @override
   Future<List<McpServerConfig>> getMcpServerList() async {

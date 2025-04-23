@@ -51,24 +51,6 @@ class SettingsService {
     }
   }
 
-  // REMOVED: saveShowCodeBlocks method is no longer needed.
-  /*
-  /// Saves the 'Show Code Blocks' setting to the repository and updates the state provider.
-  Future<void> saveShowCodeBlocks(bool showCodeBlocks) async {
-    try {
-      await _repo.saveShowCodeBlocks(showCodeBlocks);
-      // Update the application state
-      _ref.read(showCodeBlocksProvider.notifier).state = showCodeBlocks;
-      debugPrint(
-        "SettingsService: Show Code Blocks setting saved: $showCodeBlocks",
-      );
-    } catch (e) {
-      debugPrint("SettingsService: Error saving Show Code Blocks setting: $e");
-      rethrow;
-    }
-  }
-  */
-
   /// Saves the current list of MCP servers (from the state provider) to the repository.
   /// This is called internally after any modification to the server list.
   Future<void> _saveCurrentMcpListState() async {

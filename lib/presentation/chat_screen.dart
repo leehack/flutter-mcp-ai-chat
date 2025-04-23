@@ -101,7 +101,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messages = chatState.displayMessages;
     final isLoading = chatState.isLoading;
     final isApiKeySet = chatState.isApiKeySet;
-    // REMOVED: final showCodeBlocks = chatState.showCodeBlocks;
     final connectedServerCount = mcpState.connectedServerCount;
 
     // --- Listeners ---
@@ -196,7 +195,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               itemBuilder: (context, index) {
                 final message = messages[index];
                 // Pass server configs to potentially resolve names if not already in message
-                // Removed showCodeBlocks parameter
                 return _buildMessageBubble(context, message, serverConfigs);
               },
             ),
@@ -273,15 +271,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ) {
     final theme = Theme.of(context);
     final isUser = message.isUser;
-    // Always assume code blocks are enabled now
-    final bool showCodeBlocks = true;
 
     Widget messageContent;
     List<Widget> children = [];
 
     // Render text or markdown
-    if (isUser || !showCodeBlocks) {
-      // Kept logic structure, but showCodeBlocks is always true
+    if (isUser) {
       messageContent = SelectableText(message.text);
     } else {
       // Handle potential Markdown rendering errors gracefully
