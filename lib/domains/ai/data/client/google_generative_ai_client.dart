@@ -16,7 +16,7 @@ class GoogleGenerativeAiClient implements AiClient {
 
   GoogleGenerativeAiClient(
     this._apiKey, {
-    String modelName = 'gemini-2.0-flash',
+    String modelName = 'gemini-2.5-flash-preview-04-17',
   }) : _modelName = modelName {
     initialize();
   }
@@ -40,7 +40,14 @@ class GoogleGenerativeAiClient implements AiClient {
     }
 
     try {
-      _model = GenerativeModel(model: _modelName, apiKey: _apiKey);
+      _model = GenerativeModel(
+        model: _modelName,
+        apiKey: _apiKey,
+        generationConfig: GenerationConfig(temperature: 1, topP: 0.95),
+        systemInstruction: Content.system(
+          'When you return functioncalls, please also return the textual explanation of the function call.',
+        ),
+      );
       _isInitialized = true;
       _initializationError = null;
       debugPrint("GoogleGenerativeAiClient initialized successfully.");

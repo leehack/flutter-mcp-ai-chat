@@ -228,23 +228,18 @@ class ChatNotifier extends StateNotifier<ChatState> {
   ) async {
     debugPrint("ChatNotifier: Orchestrating MCP query...");
 
-    final uniqueMcpTools = mcpState.uniqueToolDefinitions;
-    if (uniqueMcpTools.isEmpty) {
-      return AiResponse(
-        candidates: [
-          AiCandidate(
-            content: AiContent.model(
-              "Error: No unique tools found for MCP processing.",
+    final aiTool = AiTool(
+      functionDeclarations: [
+        for (var tools in mcpState.discoveredTools.entries)
+          for (var mcpTool in tools.value)
+            AiFunctionDeclaration(
+              name: mcpTool.name,
+              description: mcpTool.description ?? "",
+              parameters: _translateSchema(mcpTool.inputSchema),
             ),
-          ),
-        ],
-      );
-    }
-
-    List<AiTool> aiTools = _translateMcpToolsToAiTools(
-      uniqueMcpTools.values.toList(),
+      ],
     );
-    if (aiTools.isEmpty) {
+    if (aiTool.functionDeclarations.isEmpty) {
       debugPrint(
         "ChatNotifier: No tools translated, proceeding without tools.",
       );
@@ -257,7 +252,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       initialAiResponse = await aiRepo.generateContent(
         historyWithPrompt,
-        tools: aiTools,
+        tools: [aiTool],
       );
     } catch (e) {
       debugPrint("ChatNotifier: Error in initial AI call for MCP: $e");
@@ -383,31 +378,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
         ],
       );
     }
-  }
-
-  List<AiTool> _translateMcpToolsToAiTools(List<McpToolDefinition> mcpTools) {
-    List<AiTool> translatedTools = [];
-    for (var mcpTool in mcpTools) {
-      try {
-        // Attempt to translate schema
-        final aiSchema = _translateSchema(mcpTool.inputSchema);
-        translatedTools.add(
-          AiTool(
-            functionDeclarations: [
-              AiFunctionDeclaration(
-                name: mcpTool.name,
-                description: mcpTool.description ?? "",
-                parameters: aiSchema,
-              ),
-            ],
-          ),
-        );
-      } catch (e) {
-        debugPrint("Failed to translate schema for tool '${mcpTool.name}': $e");
-        // Skip tool if schema translation fails
-      }
-    }
-    return translatedTools;
   }
 
   // Recursive helper for schema translation

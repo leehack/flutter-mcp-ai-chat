@@ -254,25 +254,6 @@ class McpClientState {
     return uniqueNames.toList();
   }
 
-  /// Gets a map of unique tool names to their definitions. Tools with conflicting names are excluded.
-  Map<String, McpToolDefinition> get uniqueToolDefinitions {
-    final definitions = <String, McpToolDefinition>{};
-    final duplicateNames = <String>{};
-    discoveredTools.values.expand((tools) => tools).forEach((tool) {
-      if (definitions.containsKey(tool.name) ||
-          duplicateNames.contains(tool.name)) {
-        // If it's already marked as duplicate or we found a second one
-        if (!duplicateNames.contains(tool.name)) {
-          duplicateNames.add(tool.name);
-          definitions.remove(tool.name); // Remove the first instance if found
-        }
-      } else {
-        definitions[tool.name] = tool;
-      }
-    });
-    return definitions;
-  }
-
   /// Finds the server ID for a uniquely named tool.
   /// Returns null if the tool name is not found or has duplicates.
   String? getServerIdForTool(String toolName) {
