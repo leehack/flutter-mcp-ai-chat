@@ -218,7 +218,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  /// Orchestrates AI and MCP interactions when tools are involved.
+  /// Orchestrates AI and MCP interactions with agentic behavior for multi-step reasoning.
   Future<AiResponse> _orchestrateMcpQuery(
     String text,
     List<AiContent> history,
@@ -226,7 +226,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
     McpRepository mcpRepo,
     McpClientState mcpState,
   ) async {
-    debugPrint("ChatNotifier: Orchestrating MCP query...");
+    debugPrint("ChatNotifier: Orchestrating agentic MCP query...");
+
+    // Configure agent behavior
+    const int maxIterations = 5; // Prevent infinite loops
 
     final aiTool = AiTool(
       functionDeclarations: [
@@ -239,6 +242,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             ),
       ],
     );
+
     if (aiTool.functionDeclarations.isEmpty) {
       debugPrint(
         "ChatNotifier: No tools translated, proceeding without tools.",
@@ -246,135 +250,177 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return await aiRepo.generateContent([...history, AiContent.user(text)]);
     }
 
+    // Prepare history with agentic system prompt
     final userMessage = AiContent.user(text);
-    final historyWithPrompt = [...history, userMessage];
-    AiResponse initialAiResponse;
-    try {
-      initialAiResponse = await aiRepo.generateContent(
-        historyWithPrompt,
-        tools: [aiTool],
-      );
-    } catch (e) {
-      debugPrint("ChatNotifier: Error in initial AI call for MCP: $e");
-      return AiResponse(
-        candidates: [
-          AiCandidate(
-            content: AiContent.model("Error during initial AI call: $e"),
-          ),
-        ],
-      );
-    }
+    final historyWithAgentPrompt = [...history, userMessage];
 
-    final functionCalls =
-        initialAiResponse.firstCandidateContent?.parts
-            .whereType<AiFunctionCallPart>()
-            .toList() ??
-        [];
+    // Agent state tracking
+    List<AiContent> agentConversation = [...historyWithAgentPrompt];
+    int iterationCount = 0;
+    bool agentThinking = true;
 
-    if (functionCalls.isEmpty) {
-      return initialAiResponse; // No tool calls needed
-    }
-
-    // --- Tool Calls Required ---
-    final List<AiFunctionResponsePart> functionResponses = [];
-
-    for (final functionCall in functionCalls) {
-      final toolName = functionCall.name;
-      final serverId = mcpState.getServerIdForTool(toolName);
-
-      if (serverId == null) {
-        debugPrint(
-          "ChatNotifier: Could not find unique server for tool '$toolName'.",
-        );
-
-        functionResponses.add(
-          AiFunctionResponsePart(
-            name: toolName,
-            response: {
-              'error': "Tool '$toolName' not found or has duplicates.",
-            },
-          ),
-        );
-        continue;
-      }
-
-      List<McpContent> toolExecutionResult;
-      try {
-        // Display message indicating tool call
-        final serverName =
-            _ref
-                .read(mcpServerListProvider)
-                .firstWhereOrNull((s) => s.id == serverId)
-                ?.name ??
-            serverId;
-        _updateLastDisplayMessage(
-          ChatMessage(
-            text: "Calling tool: $toolName on $serverName...",
-            isUser: false,
-            toolName: toolName,
-            sourceServerId: serverId,
-            sourceServerName: serverName,
-          ),
-        );
-
-        toolExecutionResult = await mcpRepo.executeTool(
-          serverId: serverId,
-          toolName: toolName,
-          arguments: functionCall.args,
-        );
-
-        // Add successful response
-        functionResponses.add(
-          AiFunctionResponsePart(
-            name: toolName,
-            response: {
-              'result': toolExecutionResult
-                  .whereType<McpTextContent>()
-                  .map((t) => t.text)
-                  .join('\n'),
-            },
-          ),
-        );
-      } catch (e) {
-        debugPrint(
-          "ChatNotifier: Error executing tool '$toolName' on server '$serverId': $e",
-        );
-
-        // Add error response
-        functionResponses.add(
-          AiFunctionResponsePart(
-            name: toolName,
-            response: {'error': "Execution failed: $e"},
-          ),
-        );
-      }
-    }
-
-    // Create a single toolResponseContent with all function responses as parts
-    final toolResponseContent = AiContent(
-      role: 'tool',
-      parts: functionResponses,
+    _updateLastDisplayMessage(
+      ChatMessage(
+        text: "Planning approach to answer your question...",
+        isUser: false,
+      ),
     );
 
-    final finalHistory = [
-      ...historyWithPrompt,
-      initialAiResponse.firstCandidateContent!,
-      toolResponseContent,
-    ];
-
     try {
-      // Final call to AI with the tool response included
-      final finalAiResponse = await aiRepo.generateContent(finalHistory);
-      return finalAiResponse;
-    } catch (e) {
-      debugPrint(
-        "ChatNotifier: Error in final AI call after MCP tool execution: $e",
+      // Agent loop - continue until agent decides to answer directly or max iterations reached
+      while (agentThinking && iterationCount < maxIterations) {
+        iterationCount++;
+        debugPrint("ChatNotifier: Agent iteration $iterationCount");
+
+        // Get AI response with tools
+        final aiResponse = await aiRepo.generateContent(
+          agentConversation,
+          tools: [aiTool],
+        );
+
+        final aiContent = aiResponse.firstCandidateContent;
+        if (aiContent == null) {
+          throw Exception("Empty response from AI");
+        }
+
+        // Add AI response to conversation history
+        agentConversation = [...agentConversation, aiContent];
+
+        // Extract function calls from response
+        final functionCalls =
+            aiContent.parts.whereType<AiFunctionCallPart>().toList();
+
+        // If no function calls, agent is done thinking and ready to respond directly
+        if (functionCalls.isEmpty) {
+          agentThinking = false;
+          debugPrint("ChatNotifier: Agent completed with direct answer");
+          continue; // Break the loop with final response
+        }
+
+        // Execute each tool call and add results to conversation
+        final List<AiFunctionResponsePart> functionResponses = [];
+
+        for (final functionCall in functionCalls) {
+          final toolName = functionCall.name;
+          final serverId = mcpState.getServerIdForTool(toolName);
+
+          if (serverId == null) {
+            debugPrint(
+              "ChatNotifier: Could not find unique server for tool '$toolName'.",
+            );
+
+            functionResponses.add(
+              AiFunctionResponsePart(
+                name: toolName,
+                response: {
+                  'error': "Tool '$toolName' not found or has duplicates.",
+                },
+              ),
+            );
+            continue;
+          }
+
+          try {
+            // Display message indicating tool call
+            final serverName =
+                _ref
+                    .read(mcpServerListProvider)
+                    .firstWhereOrNull((s) => s.id == serverId)
+                    ?.name ??
+                serverId;
+
+            _updateLastDisplayMessage(
+              ChatMessage(
+                text:
+                    "Thinking... (Step $iterationCount: Using $toolName on $serverName)",
+                isUser: false,
+                toolName: toolName,
+                sourceServerId: serverId,
+                sourceServerName: serverName,
+              ),
+            );
+
+            // Execute tool and get result
+            final toolResult = await mcpRepo.executeTool(
+              serverId: serverId,
+              toolName: toolName,
+              arguments: functionCall.args,
+            );
+
+            // Add successful response
+            functionResponses.add(
+              AiFunctionResponsePart(
+                name: toolName,
+                response: {
+                  'result': toolResult
+                      .whereType<McpTextContent>()
+                      .map((t) => t.text)
+                      .join('\n'),
+                },
+              ),
+            );
+          } catch (e) {
+            debugPrint("ChatNotifier: Error executing tool '$toolName': $e");
+
+            // Add error response
+            functionResponses.add(
+              AiFunctionResponsePart(
+                name: toolName,
+                response: {'error': "Execution failed: $e"},
+              ),
+            );
+          }
+        }
+
+        // Create tool response content and add to agent conversation
+        if (functionResponses.isNotEmpty) {
+          final toolResponseContent = AiContent(
+            role: 'tool',
+            parts: functionResponses,
+          );
+
+          agentConversation = [...agentConversation, toolResponseContent];
+        }
+      }
+
+      // Generate final response based on all agent interactions
+      _updateLastDisplayMessage(
+        ChatMessage(text: "Preparing answer...", isUser: false),
       );
+
+      // If we reached max iterations without an answer, force a final response
+      if (agentThinking) {
+        debugPrint(
+          "ChatNotifier: Hit max iterations ($maxIterations), forcing final answer",
+        );
+
+        // Add a system message instructing to provide final answer
+        agentConversation = [
+          ...agentConversation,
+          AiContent(
+            role: 'system',
+            parts: [
+              AiTextPart(
+                "You've gathered enough information. Please provide your final answer to the user's question now.",
+              ),
+            ],
+          ),
+        ];
+
+        // Final call without tools to get conclusion
+        final finalResponse = await aiRepo.generateContent(agentConversation);
+        return finalResponse;
+      } else {
+        // The last response in agentConversation is already the final answer
+        return AiResponse(
+          candidates: [AiCandidate(content: agentConversation.last)],
+        );
+      }
+    } catch (e) {
+      debugPrint("ChatNotifier: Error in agentic orchestration: $e");
       return AiResponse(
         candidates: [
-          AiCandidate(
-            content: AiContent.model("Error during final AI call: $e"),
-          ),
+          AiCandidate(content: AiContent.model("Error during processing: $e")),
         ],
       );
     }

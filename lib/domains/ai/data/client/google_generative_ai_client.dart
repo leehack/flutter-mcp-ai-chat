@@ -45,7 +45,12 @@ class GoogleGenerativeAiClient implements AiClient {
         apiKey: _apiKey,
         generationConfig: GenerationConfig(temperature: 1, topP: 0.95),
         systemInstruction: Content.system(
-          'When you return functioncalls, please also return the textual explanation of the function call.',
+          "You're an agent that can call external tools to help solve user questions. "
+          "ALWAYS follow this process: 1) Think about what tools could help answer this question, "
+          "2) Call appropriate tools to gather information, 3) If you need more information, "
+          "call additional tools, 4) Once you have all needed information, respond directly to "
+          "the user's question without mentioning your thought process. "
+          "Only call tools that are necessary and relevant to the user's question.",
         ),
       );
       _isInitialized = true;
