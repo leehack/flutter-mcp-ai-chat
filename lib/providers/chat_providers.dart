@@ -238,7 +238,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             AiFunctionDeclaration(
               name: mcpTool.name,
               description: mcpTool.description ?? "",
-              parameters: _translateSchema(mcpTool.inputSchema),
+              parameters: AiSchema.fromSchemaMap(mcpTool.inputSchema),
             ),
       ],
     );
@@ -423,69 +423,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
           AiCandidate(content: AiContent.model("Error during processing: $e")),
         ],
       );
-    }
-  }
-
-  // Recursive helper for schema translation
-  AiSchema? _translateSchema(Map<String, dynamic>? schemaMap) {
-    if (schemaMap == null) return null;
-
-    final type = schemaMap['type'] as String?;
-    final description = schemaMap['description'] as String?;
-
-    try {
-      switch (type) {
-        case 'object':
-          final properties =
-              schemaMap['properties'] as Map<String, dynamic>? ?? {};
-          final requiredList =
-              (schemaMap['required'] as List<dynamic>?)?.cast<String>();
-          final aiProperties = properties.map((key, value) {
-            if (value is Map<String, dynamic>) {
-              return MapEntry(key, _translateSchema(value)!);
-            } else {
-              throw FormatException(
-                "Invalid property value type for key '$key'",
-              );
-            }
-          });
-
-          return AiObjectSchema(
-            properties: aiProperties,
-            requiredProperties: requiredList,
-            description: description,
-          );
-        case 'string':
-          final enumValues =
-              (schemaMap['enum'] as List<dynamic>?)?.cast<String>();
-          return AiStringSchema(
-            enumValues: enumValues,
-            description: description,
-          );
-        case 'number':
-        case 'integer':
-          return AiNumberSchema(description: description);
-        case 'boolean':
-          return AiBooleanSchema(description: description);
-        case 'array':
-          final items = schemaMap['items'] as Map<String, dynamic>?;
-          if (items == null) {
-            throw FormatException("Array schema missing 'items'.");
-          }
-          final aiItems = _translateSchema(items);
-          if (aiItems == null) {
-            throw FormatException("Failed to translate array 'items'.");
-          }
-          return AiArraySchema(items: aiItems, description: description);
-        default:
-          debugPrint(
-            "Unsupported schema type encountered during translation: $type",
-          );
-          return null;
-      }
-    } catch (e) {
-      debugPrint("Error translating schema fragment (type: $type): $e");
-      return null;
     }
   }
 
