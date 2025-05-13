@@ -229,7 +229,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     debugPrint("ChatNotifier: Orchestrating agentic MCP query...");
 
     // Configure agent behavior
-    const int maxIterations = 5; // Prevent infinite loops
+    const int maxIterations = 15; // Prevent infinite loops
 
     final aiTool = AiTool(
       functionDeclarations: [
@@ -398,7 +398,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         agentConversation = [
           ...agentConversation,
           AiContent(
-            role: 'system',
+            role: 'tool',
             parts: [
               AiTextPart(
                 "You've gathered enough information. Please provide your final answer to the user's question now.",
